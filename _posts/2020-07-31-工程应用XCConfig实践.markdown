@@ -1,0 +1,73 @@
+---
+layout: post
+title: 工程应用XCConfig实践
+date: 2020-07-31 19:07:15
+categories: iOS
+---
+# 工程应用 XCConfig 实践
+
+### 为什么要使用 XCConfig
+
+在不同部署下需要使用不同的 Server Host、SDK AppID。在编码时需要对部署环境进行判断，容易出bug。想要达到在编写代码时无需考虑部署环境。
+
+当然 XCConfig 不是唯一的解决方案，但是相对干净的实现手段。
+
+<!--more-->
+
+## 基本实践
+
+使用 XCConfig 的一般步骤是：
+
+1. 为不同部署分别创建 Project 的 Configuration。
+2. 分别为这写 Configuration 创建 Configuration Settings File 即 XCConfig。
+3. 在 XCConfig 文件中定义配置。
+4. 为 Project 的 Configuration 设置 XCConfig。
+5. 在 Info.plist 中 引用上面定义的配置。
+6. 创建一个 Config.swift 用来从 Info.plst 取值。
+7. 取消 XCConfig 的写权限，以防止不经注意的修改。
+
+
+
+[这里 ](https://github.com/srv7/XCConfigSample/releases/tag/1.0)有一个完成的 Demo 工程
+
+## 问题
+
+上面的基本实践中存在几个问题：
+
+1. 所有的配置都被存储在 Info.plist 中，而 Info.plist 很容易获取到，数据的安全性极差。
+2. 添加一个配置过程繁琐，容易漏下其中某一步
+   1. 在 XCConfig 中添加配置项。
+   2. 在 Info.plist 中添加对配置的引用。
+   3. 在 Config.swift 中读取 Info.plist 中的值。
+
+### 改进
+
+从上面可以看出，一个配置项的最终归宿是 Config.swift 中的一个属性，中间经过 Info.plist 从编译环境中将配置项读取出来放入Info.plist 中，然后 Config.swift 在运行时读取从 Info.plist 取值。
+
+那么能不能不经过 Info.plist 的介入，我们在编译过程中自行读取配置项，再将其写入到 Config.swift 中呢？
+
+答案是肯定的！Xcode 提供了 `Build Phases ` ，在编译过程中执行我们自定义的脚本，并通过 `env` 变量提供所有的编译环境变量。所以我们可以在编译过程中读取到我们的配置项，并通过用编程的方式来生成 Config.swift 文件。这样就避免了上述提到的 [问题](#问题)
+
+
+
+[这里](https://github.com/srv7/XCConfigSample/releases/tag/2.0) 是一个改进后的 Demo 工程
+
+
+
+## 注意
+
+有几点需要注意
+
+
+1. XCConfig 中 Key 的命名需要遵守约定：
+   1.  prefix_realname_suffix 的形式命名
+   2. prefix 固定为 CONFIG ，自行定义，所有配置项都以此 prefix 开头，不然无法从 env 中过滤出我们定义的配置项
+   3. realname 为真正的 Key
+   4. suffix 为 Value 的类型，如 String、Int、Bool、UInt32 等
+2. 由于 Config.swift 改成了自动生成，所有无法添加注释，Key 的命名不可随意，要可以清晰地看出其意义
+3. 自动生成的 Config.swift 由于要参与编译，所以添加的 phase 要在 Compile Sources 之前
+4. include 其他 xcconfig 时要注意路径问题
+5. 当前由于生成 Config.swift 的脚本很粗糙，不能满足需求时请自行修改。（楼主不懂 shell，  如果你能帮我改进现在脚本，请联系我，✿✿ヽ(°▽°)ノ✿✿）
+
+## 引用
+- [Xcode Build Configuration Files](https://nshipster.com/xcconfig/)

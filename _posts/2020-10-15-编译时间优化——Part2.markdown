@@ -1,0 +1,154 @@
+---
+title: 编译时间优化——Part2
+date: 2020-10-15 19:27:31
+subtitle: optimize_compilation_part_2
+categories: iOS
+---
+
+# 如何避免编译时间增长
+
+继第一篇后，来谈谈如果避免编译时间不合理增长
+<!-- more -->
+
+## 减少重新编译时的工作量
+
+Swift的依赖关系模型是基于文件的，如果只在方法内部修改代码，编译器则只会重新编译改文件。如果是在文件中添加新方法或者删除实体，编译器将重新编译依赖该文件的所有文件。
+
+- 在单独文件中定义实体
+- 正确使用访问修饰符
+
+## 移除无用代码
+未用到的代码会拖慢编译速度，在确保代码可以被清除后，可以移除无用代码以加快编译速度。
+
+推荐 [periphery](https://github.com/peripheryapp/periphery)
+
+## Code vs Xibs/Storyboards
+Xib and Storyboard 文件会拖慢全量编译并增大 App 体积，但在增量编译时，对编译速度无明显影响。
+
+## 为复杂的 Swift 属性使用明确的类型
+Swift 中定义变量时可以不带类型声明，编译器会根据初始值推导出其类型，但与此同时也增加了编译器分析推断时间。从减少编译时间的角度出发，为相对复杂的变量声明添加类型声明，可以大大减少编译编译时间。
+```swift
+// build time: 330ms
+let tm1 = ceil(abs(PlayerWaitingStartInterval - timer.fireDate. timeIntervalSinceNow) * 1000)
+// build time: 79ms
+// Add type annotation
+let tm1: Double = ceil(abs(PlayerWai tingStartInterval - timer.fireDate.timeIntervalSinceNow) * 1000)
+// build time: 26ms
+// Add type annotation & separate into two parts
+let interval: Double = abs(PlayerWaitingStartInterval - timer.fireDate.timeIntervalSinceNow)
+let tml: Double = ceil(interval * 1000)
+```
+## 拆解复杂的 Swift 表达式
+对复杂表达式进行简化，简化的代码不仅可以提高编译效率，也具有更好的可读性，例如下面样例代码编译时间相差 30 倍。
+> 不强制，甚至不推荐。当代码可以写的很简单时，不推荐将代码拆分， 增加代码的可维护性比减少编译时间更重要。
+
+```swift
+let sum = [1, 2, 3].map { String($0) }.compactMap { Int($0) }.reduce(0, +)
+=>
+let numbers = [1, 2, 3]
+let stringNumbers = numbers.map { String($0) }
+let intNumbers = stringNumbers.compactMap { Int($0) }
+let sum = intNumbers.reduce(0, +)
+```
+
+## 避免使用加号对字符串或数组进行拼接
+对字符串或数组的拼接，在日常开发中十分常见，需要注意拼接方式对编译时间的影响，例如下面样例代码编译时间相差 20 倍。
+
+```swift
+// 字符串拼接
+"abc" + stringA + "cbd"
+=>
+"abc\(stringA)cbd"
+
+// Array 拼接。
+arrayA + arrayB
+=>
+arrayA.append(contentsOf: arrayB)
+```
+
+## 避免使用 `Nil-Coalescing operator`
+Nil-Coalescing operator 会增加编译时长。但优化的优先级并不高，仅在编译时长真的非常长时才考虑使用。
+```swift
+let name = string ?? ""
+=> 
+if let name = string { 
+ /* string has value */
+} else {
+ /* string is nil*/
+}
+```
+## 避免使用三元运算符 `?:`
+`?:` 与 `??` 一样会增加编译时长，但优化的优先级也不高
+
+## 优化闭包和懒加载属性
+下面这个代码是一个普通的 lazy property 定义，但它却有可能导致过长的编译时间。
+```swift
+// Lazy property
+private(set) lazy var chartViewColors: [UIColor] = [
+    self.chartColor,
+    UIColor(red: 86/255, green: 84/255, blue: 124/255, alpha: 1),
+    UIColor(red: 80/255, green: 88/255, blue: 92/255, alpha: 1),
+    UIColor(red: 126/255, green: 191/255, blue: 189/255, alpha: 1),
+    UIColor(red: 161/255, green: 77/255, blue: 63/255, alpha: 1),
+    UIColor(red: 235/255, green: 185/255, blue: 120/255, alpha: 1),
+    UIColor(red: 100/255, green: 126/255, blue: 159/255, alpha: 1),
+    UIColor(red: 160/255, green: 209/255, blue: 109/255, alpha: 1),
+    self.backgroundGradientView.upperColor
+]
+```
+如果将它改为下面的closure后，编译时间会更长
+
+```swift
+private let createChartViewColors = { () -> [UIColor] in
+    let colors = [
+        UIColor(red: 86/255, green: 84/255, blue: 124/255, alpha: 1),
+        UIColor(red: 80/255, green: 88/255, blue: 92/255, alpha: 1),
+        UIColor(red: 126/255, green: 191/255, blue: 189/255, alpha: 1),
+        UIColor(red: 161/255, green: 77/255, blue: 63/255, alpha: 1),
+        UIColor(red: 235/255, green: 185/255, blue: 120/255, alpha: 1),
+        UIColor(red: 100/255, green: 126/255, blue: 159/255, alpha: 1),
+        UIColor(red: 160/255, green: 209/255, blue: 109/255, alpha: 1),
+    ]
+    return colors
+}
+```
+
+解决方案是将初始化代码移到一个单独的函数中。从代码风格的角度考虑，将过长的初始化代码移到单独的函数中也是一个好习惯，查看代码时还可以更加清晰地看出一个 class 定义了哪些 property。
+
+```swift
+// Cumulative build time: 56.3ms
+private(set) lazy var chartViewColors: [UIColor] = self.createChartViewColors()
+
+// Build time: 6.2ms
+private func createChartViewColors() -> [UIColor] {
+    return [
+        chartColor,
+        UIColor(red: 86/255, green: 84/255, blue: 124/255, alpha: 1),
+        UIColor(red: 80/255, green: 88/255, blue: 92/255, alpha: 1),
+        UIColor(red: 126/255, green: 191/255, blue: 189/255, alpha: 1),
+        UIColor(red: 161/255, green: 77/255, blue: 63/255, alpha: 1),
+        UIColor(red: 235/255, green: 185/255, blue: 120/255, alpha: 1),
+        UIColor(red: 100/255, green: 126/255, blue: 159/255, alpha: 1),
+        UIColor(red: 160/255, green: 209/255, blue: 109/255, alpha: 1),
+        backgroundGradientView.upperColor
+    ]
+}
+```
+
+## 避免 CGFloat 转 CGFloat
+```swift
+// Build time: 3431.7ms
+return CGFloat(M_PI) * (CGFloat((hour + hourDelta + CGFloat(minute + minuteDelta) / 60) * 5) - 15) * unit / 180
+
+// Build time: 3.0ms
+return CGFloat(M_PI) * ((hour + hourDelta + (minute + minuteDelta) / 60) * 5 - 15) * unit / 180
+```
+
+## 避免不必要的 round
+
+```swift
+// Build time: 1433.7ms
+let expansion = a — b — c + round(d * 0.66) + e
+// Build time: 34.7ms
+let expansion = a — b — c + d * 0.66 + e
+```
