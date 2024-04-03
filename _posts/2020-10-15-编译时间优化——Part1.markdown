@@ -13,30 +13,30 @@ swift 编译是真的慢！！！
 
 1. Xcode 保留了每次编译的日志，可以在 Report Navigator 中很快地找到。
 
-![reporter.png](https://qiniu.struggleblog.com/optimize_compilation_part_1_%E7%BC%96%E8%AF%91%E6%97%B6%E9%97%B4_reporter.png)
+![reporter.png](http://qiniu.struggle.fun/optimize_compilation_part_1_%E7%BC%96%E8%AF%91%E6%97%B6%E9%97%B4_reporter.png)
 
 2. 在 Xcode 的 activity viewer 中显示编译时间, 开启这个选项需要在命令行中执行以下命令：
 ```swift
 defaults write com.apple.dt.Xcode ShowBuildOperationDuration YES
 ```
 编译成功后，编译时间将显示在 Succeeded 后面，如下图所示。
-![activity_viewer.png](https://qiniu.struggleblog.com/optimize_compilation_part_1_%E7%BC%96%E8%AF%91%E6%97%B6%E9%97%B4_activity_viewer.png)
+![activity_viewer.png](http://qiniu.struggle.fun/optimize_compilation_part_1_%E7%BC%96%E8%AF%91%E6%97%B6%E9%97%B4_activity_viewer.png)
 
 
 ## 耗时分析
 
 通过 `Xcode` 的 `Build With Timing Summary` 可以看到在编译过程中各个阶段的耗时, `Product > Perform Action > Build with Timing Summary` 或者 `xcodebuild -buildWithTimingSummary`。
 
-![timing_summary.png](https://qiniu.struggleblog.com/optimize_compilation_part_1_timing_summary.png)
+![timing_summary.png](http://qiniu.struggle.fun/optimize_compilation_part_1_timing_summary.png)
 
 在 `Report Navigator` 中可以看到下面的时间统计
 
-![timing_summary_result.png](https://qiniu.struggleblog.com/optimize_compilation_part_1_timing_summary_result.png)
+![timing_summary_result.png](http://qiniu.struggle.fun/optimize_compilation_part_1_timing_summary_result.png)
 
 可以看到 `CompileSwiftSources` 、 `CompileC`、`CompileXIB` 花费了大量时间。
 `通过查看编译日志发现，PhaseScriptExecution` 阶段有重复的和可以精简的 `phase`。
 
-![compile_log.png](https://qiniu.struggleblog.com/optimize_compilation_part_1_compile_log.png)
+![compile_log.png](http://qiniu.struggle.fun/optimize_compilation_part_1_compile_log.png)
 
 其中红框内的 `phase` 重复了，绿框中的生成 dSYM 的操作在 `Debug` 配置下是不需要的。
 
@@ -54,35 +54,35 @@ defaults write com.apple.dt.Xcode ShowBuildOperationDuration YES
 ### Build Active Architecture Only (ONLY_ACTIVE_ARCH)
 开启时，xcode 只会对当为当前 CPU 架构创建二进制文件，在开发阶段，我们只在真机或模拟器（Active Architecture）编译工程。在 Release 的编译中，应该包含所有支持的 CPU 架构，因为该二进制文件将通过 App Store 下发到用户各种各样的设备上。确保在 Debug 配置下设置为 YES，在 Release 配置下设置为 NO
 
-![ACTIVE_ARCH.png](https://qiniu.struggleblog.com/optimize_compilation_part_1_ACTIVE_ARCH.png)
+![ACTIVE_ARCH.png](http://qiniu.struggle.fun/optimize_compilation_part_1_ACTIVE_ARCH.png)
 
 ### Compilation Mode (SWIFT_COMPILATION_MODE)
 
 此设置决定了 `swift` 源文件被重新编译的策略。在 `Debug` 配置下设置为 `Incremental`, 只重新编译 “过期” 的 `swift` 源文件。在 `Release` 配置下设置为 `Whole Module`, 编译所有 swift 源文件以应用某些代码优化。
 
-![SWIFT_COMPILATION_MODE.png](https://qiniu.struggleblog.com/optimize_compilation_part_1_SWIFT_COMPILATION_MODE.png)
+![SWIFT_COMPILATION_MODE.png](http://qiniu.struggle.fun/optimize_compilation_part_1_SWIFT_COMPILATION_MODE.png)
 
 ### Optimization Level (SWIFT_OPTIMIZATION_LEVEL)
 
 优化级别设置定义了优化构建的方式。由于优化过程涉及额外的工作，因此代码优化会导致构建时间变慢。Debug 配置想应设置为“No Optimization”，因为我们需要快速的编译时间。在Release 配置下，将其设置为“Optimize for Speed”。
 
-![SWIFT_OPTIMIZATION_LEVEL.png](https://qiniu.struggleblog.com/optimize_compilation_part_1_SWIFT_OPTIMIZATION_LEVEL.png)
+![SWIFT_OPTIMIZATION_LEVEL.png](http://qiniu.struggle.fun/optimize_compilation_part_1_SWIFT_OPTIMIZATION_LEVEL.png)
 
 ### Debug Information Format (DEBUG_INFORMATION_FORMAT)
 
 包含用于符号化和解释崩溃报告的调试信息。Release 配置下应该始终创建此文件，Debug 配置下无需生成此文件。
 
-![DEBUG_INFORMATION_FORMAT.png](https://qiniu.struggleblog.com/optimize_compilation_part_1_DEBUG_INFORMATION_FORMAT.png)
+![DEBUG_INFORMATION_FORMAT.png](http://qiniu.struggle.fun/optimize_compilation_part_1_DEBUG_INFORMATION_FORMAT.png)
 
 ### Enable Bitcode (ENABLE_BITCODE)
 BitCode 是 iOS 9 引入的新特性，是由 LLVM 引入的一种中间代码，当这个属性设置为 YES 的时候，Xcode 在打包的时候，会将项目编译成很多个设备对应的安装包，这样在编译打包的时候就比较耗时，但对于内部打包不需要上传 AppStroe, 因此我们可以关闭此特性以减少编译打包时间。
 
-![ENABLE_BITCODE.png](https://qiniu.struggleblog.com/optimize_compilation_part_1_ENABLE_BITCODE.png)
+![ENABLE_BITCODE.png](http://qiniu.struggle.fun/optimize_compilation_part_1_ENABLE_BITCODE.png)
 
 
 ## 精简 build phases
 
-![remove_build_phases.png](https://qiniu.struggleblog.com/optimize_compilation_part_1_remove_build_phases.png)
+![remove_build_phases.png](http://qiniu.struggle.fun/optimize_compilation_part_1_remove_build_phases.png)
 
 
 ## 调整源码
@@ -112,7 +112,7 @@ swift 的编译器内置了多个[诊断选项](https://github.com/apple/swift/b
 - **-Xfrontend -debug-time-expression-type-checking**: 与 **-Xfrontend -debug-time-function-bodies** 类似，打印对每个表达式进行类型检查花费的时间 (time spent typechecking every expression in the program.)
 
 添加诊断选项后，xcodebuild 的输出中将会增加如下内容
-![swift诊断选项.png](https://qiniu.struggleblog.com/optimize_compilation_part_1_swift%E8%AF%8A%E6%96%AD%E9%80%89%E9%A1%B9.png)
+![swift诊断选项.png](http://qiniu.struggle.fun/optimize_compilation_part_1_swift%E8%AF%8A%E6%96%AD%E9%80%89%E9%A1%B9.png)
 
 
 通过统计可以得出某个文件的类型检查时长，每个表达式的类型检查时长。
@@ -120,7 +120,7 @@ swift 的编译器内置了多个[诊断选项](https://github.com/apple/swift/b
 
 #### BuildTimeAnalyzer
 
-![BuildTimeAnalyzer.png](https://qiniu.struggleblog.com/optimize_compilation_part_1_BuildTimeAnalyzer.png)
+![BuildTimeAnalyzer.png](http://qiniu.struggle.fun/optimize_compilation_part_1_BuildTimeAnalyzer.png)
 
 #### XCLogParser
 ##### 安装
@@ -137,7 +137,7 @@ xclogparser parse --project MyApp --reporter html
 ```
 
 会在工程目录的 `build/xclogparser/reports/` 路径下生成报告
-![xclogparse_result.png](https://qiniu.struggleblog.com/optimize_compilation_part_1_xclogparse_result.png)
+![xclogparse_result.png](http://qiniu.struggle.fun/optimize_compilation_part_1_xclogparse_result.png)
 
 对于耗时比较多的方法和表达式进行优化，以降低峰值
 
